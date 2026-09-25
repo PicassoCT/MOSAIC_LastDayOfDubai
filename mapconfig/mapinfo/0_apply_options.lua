@@ -11,6 +11,8 @@ if Spring.GetMapOptions then
   }
   mapinfo.atmosphere.skybox = skies[mapOptions.dhubai_sky] or skies['clear-day']
   if mapOptions.dhubai_splats == 'original' then
+    mapinfo.resources.splatdetailnormaltex1 = "Normal_Detail_Sand_Dunes.png"
+    mapinfo.splats.texscales = {0.05, 0.25, 0.006125, 0.625}
     mapinfo.splats.texmults = {0.95, 0.35, 0.86, 0.5}
   elseif mapOptions.dhubai_splats == 'off' then
     mapinfo.splats.texmults = {0, 0, 0, 0}

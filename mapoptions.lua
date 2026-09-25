@@ -37,9 +37,10 @@
 
 local options = {
     {
-        key = 'dhubai_sky', name = 'Dhubai skybox', type = 'list', def = 'clear-day',
-        desc = 'Static sky background; does not change game time, lighting or rainfall.',
+        key = 'dhubai_sky', name = 'Dhubai skybox', type = 'list', def = 'automatic',
+        desc = 'Automatic follows MOSAIC time and rain; other choices lock the background.',
         items = {
+            {key='automatic', name='Automatic day / night / rain'},
             {key='clear-day', name='Clear daylight'},
             {key='overcast-day', name='Overcast daylight'},
             {key='sunset-sandstorm', name='Sunset and sandstorm'},
@@ -49,7 +50,7 @@ local options = {
     },
     {
         key = 'dhubai_splats', name = 'Terrain normal detail', type = 'list', def = 'subtle',
-        desc = 'Compare terrain normal strength without changing texture scale or distribution.',
+        desc = 'Broad subtle stone, original dunes, or no detail normals. Distribution is preserved.',
         items = {
             {key='subtle', name='Subtle'},
             {key='original', name='Original strength'},

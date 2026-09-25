@@ -106,7 +106,7 @@ local mapinfo = {
 		----splatDetailNormalTex1 = "Ground_MossSolid_1k_dnts.tga";
 		--the order is cliffs, pebbles, grass, metalspots
 
-		splatDetailNormalTex1 = "Normal_Detail_Sand_Dunes.png", --g
+		splatDetailNormalTex1 = "Normal_Detail_Rocky.png", -- broad stone, no dune ridges
 		splatDetailNormalTex2 = "Normal_Detail_Rocky.png", --r	
 		splatDetailNormalTex3 = "Normal_Detail_Tar.png", --b
 		splatDetailNormalTex4 = "Normal_Detail_Grass.png", -- a
@@ -115,8 +115,8 @@ local mapinfo = {
 	},
 
 	splats = {
-		texScales = {0.05, 0.25, 0.006125, 0.625},
-		texMults  = {0.24, 0.18, 0.17, 0.20}, -- dunes, rock, tar, grass; restrained normal blend
+		texScales = {0.0125, 0.025, 0.006125, 0.625},
+		texMults  = {0.12, 0.12, 0.17, 0.20}, -- broad stone, rock, tar, grass
 	},
 
 	atmosphere = {

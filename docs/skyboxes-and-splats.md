@@ -2,82 +2,65 @@
 
 The map source is on `master`; `main` contains only the initial license.
 
-## Selection
+## Sky selection
 
-Lobby map option **Dhubai skybox** (`dhubai_sky`):
+The default lobby option `dhubai_sky=automatic` loads the map widget from
+`LuaUI/Widgets_Map`, the directory MOSAIC's widget handler actually scans.
+It uses the same 28,800-frame day and noon offset as MOSAIC's rain renderer.
 
-| Value | Source | Usage |
-| --- | --- | --- |
-| clear-day | New generated daylight variant | Default |
-| overcast-day | New generated cloudy daylight variant | Rainy daytime |
-| sunset-sandstorm | Previously approved panorama | Sunset / dust storm |
-| rainy-night | Previously approved panorama | Rainy night |
-| original | Existing cleardesert.dds | Comparison |
+- Day: clear-day, or overcast-day when local rain reaches 0.25.
+- Clear weather resumes when rain drops to 0.10 (hysteresis).
+- Night (18:00–06:00): rainy-night.
 
-These select a static background. They do not set rainfall, change the sun,
-or follow MOSAIC's day/night cycle. Automatic transitions need coordination
-with the game's weather and lighting controller; they are not included here.
-The original cubemap remains available.
+Rain comes from `WG.GetVehicleHeadlightWetness`, including `/weatherman`.
+Without that API, daytime defaults to clear. Selection is checked once per
+second; textures change only on a state change. At most three compressed
+cubemaps are retained, roughly 6 MiB plus the engine's base sky.
 
-Sources are in `maps/skyboxes/sources`. Runtime assets are 512-pixel RGBA8
-DDS cubemaps, all six faces and ten mip levels (about 8 MiB per variant).
-Only the selected cubemap loads. Rebuild with `python3 tools/build_skyboxes.py`
-(Pillow and NumPy). The converter handles Recoil's sky Y convention and
-nv_dds's vertical flip and Y-face exchange. It does not repaint source art.
+Static choices remain: clear-day, overcast-day, sunset-sandstorm, rainy-night,
+and original. They disable automatic selection. Other games without MOSAIC's
+map-widget loader retain the static clear-day fallback.
 
-New images used the built-in image-generation tool with the sunset panorama
-as reference. Prompt: preserve coastline, buildings and horizon; create a
-2:1, 360x180 environment with continuous wrap and coherent poles; no text;
-change weather/lighting only. Clear variant: pale blue sky, high clouds,
-warm sand and turquoise gulf, no sandstorm. Overcast variant: silver-gray
-cloud layers, distant rain curtains, diffuse cool daylight, no lightning.
+Limits: transitions are discrete, not crossfaded. The only night panorama
+currently available has rain clouds baked in, including during dry nights.
+The sunset image also contains a sandstorm, so it is deliberately manual.
+Sky selection does not alter game lighting, weather, or the sun's position.
+Baked sun and horizon geography still need checking against the map in engine.
 
-Generated panoramas are artistic environments, not measured HDR captures.
-Neither source-edge continuity nor pole quality is guaranteed by conversion.
-Inspect all azimuths, zenith, horizon height and ocean direction in engine
-before merging. Static sun/city lighting in the art may disagree with game time.
+## White-background repair candidate
 
-## Confirmed log warning
+The four new cubemaps now use BC3/DXT5 instead of raw RGBA8. Recoil's nv_dds
+uncompressed upload path uses legacy component-count internal formats, which
+are incompatible with core OpenGL; the compressed path uses an explicit format.
+This avoids that compatibility hazard but the screenshot alone does not prove
+it caused the white exterior on the user's build. Confirm in-game after pulling.
 
-`CSMFReadMap::CreateSplatDetailTextures` reports:
-`Invalid SMF splatDetailTex maps/iwantDNTS.tga. Creating fallback texture`.
+Runtime assets: 512-pixel faces, six faces, ten mip levels, 2,097,440 bytes each
+(previously 8,388,728). Rebuild with `python3 tools/build_skyboxes.py`, using NumPy
+and Pillow with DXT5 encoding support. Sources remain in `maps/skyboxes/sources`.
+The converter preserves the nv_dds vertical flip and Y-face exchange convention.
+Generated source seams and poles are not guaranteed seamless by conversion.
 
-That filename is configured but absent. The replacement
-`splat_detail_neutral.png` explicitly provides the same neutral RGBA value
-(127 in each channel) used by the engine fallback. It removes the missing
-resource, without introducing a new diffuse pattern. This warning alone
-does not prove the cause of excessive normal detail.
+## Terrain detail
 
-All four normal textures and the distribution texture are present. The
-full-map `detailNormalTex` is commented out and therefore is not responsible
-in this repository revision. DNTS normal maps are active. Shader inspection
-shows `texMults` contributes to the blend from geometric to detail normals.
+The default `subtle` option replaces the dune normal layer with the existing
+rock normal texture. Its scale is four times broader; the rock layer is ten
+times broader. Both weights are 0.12. This removes dune ridges from the layer
+that appears near the shore without repainting the distribution or base terrain.
+It also affects inland areas using those same distribution channels.
 
-| Layer | Original weight | Subtle weight |
-| --- | ---: | ---: |
-| Sand | 0.95 | 0.24 |
-| Rock | 0.35 | 0.18 |
-| Asphalt | 0.86 | 0.17 |
-| Grass | 0.50 | 0.20 |
+`original` restores the dune texture, all original scales and weights.
+`off` disables detail-normal influence for diagnosis.
+The explicit neutral diffuse detail texture still fixes the missing
+`maps/iwantDNTS.tga` warning. The diffuse-alpha flag remains a Lua boolean.
 
-The **Terrain normal detail** option (`dhubai_splats`) offers `subtle`
-(default), `original`, and `off` (diagnostic). Texture scale, texture pixels
-and distribution remain unchanged. The diffuse-alpha flag is now a proper
-Lua `false` rather than numeric `0.0`. Layer order is not changed: conflicting
-old comments are insufficient evidence for swapping distribution channels.
+## Validation
 
-## Validation and next capture
-
-Lua 5.1 checks cover all sky/detail choices, invalid sky fallback, referenced
-texture existence and boolean alpha. DDS checks cover headers, faces,
-complete mip payload and decoded orientation after the loader transforms.
+All 240 DDS face/mip images decode, with headers and payload sizes checked.
+Lua 5.1 checks cover 21 sky/detail combinations and referenced sky files.
+Mocked widget checks cover noon, rain, hysteresis, dusk, dawn and cleanup.
 No in-engine rendering or performance result is claimed.
 
-The supplied log also detects two map installs under `~/.spring/maps` and
-`~/MosaicDev/coil_compiled/maps`; the former is ignored in that run. Test the
-loaded copy, otherwise map edits may appear ineffective. Capture the same
-camera and lighting with terrain detail `off`, `original` and `subtle`, both
-dry and in rain. Confirm that the missing texture warning disappears.
-
-An unrelated `gui_betrayal_runners.lua:73` nil comparison is also in this log;
-that is a game UI error, not a map splatmapping failure.
+For verification, use the loaded map copy (earlier logs reported two installs),
+restart the match, and compare the same view with subtle/original/off terrain
+normal detail. Check the horizon at noon, dusk and night and with `/weatherman on`.

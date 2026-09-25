@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Convert the approved 2:1 panoramas to legacy RGBA DDS cubemaps.
+"""Convert the approved 2:1 panoramas to BC3/DXT5 DDS cubemaps.
 
 Requires numpy and Pillow. No repainting or texture synthesis is performed.
 Faces use DDS/OpenGL order +X,-X,+Y,-Y,+Z,-Z, with the Y convention used
@@ -7,6 +7,7 @@ by Recoil's skybox shader (uvFlip = 1,-1,1). Sources remain untouched.
 """
 from pathlib import Path
 import struct
+import io
 import numpy as np
 from PIL import Image
 
@@ -37,10 +38,11 @@ def convert(source):
     one = np.ones_like(s)
     directions = [(one,-t,-s),(-one,-t,s),(s,one,t),
                   (s,-one,-t),(s,-t,one),(-s,-t,-one)]
-    # Header: RGBA8, all six cubemap faces, complete mip chain.
+    # BC3 avoids nv_dds's legacy unsized internal formats in core OpenGL.
+    # All six faces, complete mip chain; 16 bytes per 4x4 block.
     levels = SIZE.bit_length()
-    header = [124, 0x2100F, SIZE, SIZE, SIZE*4, 0, levels] + [0]*11
-    header += [32, 0x41, 0, 32, 0xFF, 0xFF00, 0xFF0000, 0xFF000000]
+    header = [124, 0xA1007, SIZE, SIZE, ((SIZE+3)//4)**2*16, 0, levels] + [0]*11
+    header += [32, 0x4, int.from_bytes(b'DXT5', 'little'), 0, 0, 0, 0, 0]
     header += [0x401008, 0xFE00, 0, 0, 0]
     target = ROOT / (source.stem+'.dds')
     faces = [Image.fromarray(sample_panorama(pixels,x,-y,z)) for x,y,z in directions]
@@ -54,7 +56,9 @@ def convert(source):
             for level in range(levels):
                 if level:
                     face = face.resize((max(1,SIZE >> level),)*2, Image.Resampling.BOX)
-                output.write(face.tobytes())
+                encoded = io.BytesIO()
+                face.save(encoded, format='DDS', pixel_format='DXT5')
+                output.write(encoded.getvalue()[128:])
     print(target.name, target.stat().st_size)
 
 
