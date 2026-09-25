@@ -97,11 +97,12 @@ local mapinfo = {
 		--grassShadingTex = "grass_shading_tex.tga", --defaults to minimap
 		detailTex = "detailtexblurred.bmp",
 		-- specularTex = "dubai_specular.png",
-		splatDetailTex = "iwantDNTS.tga",
+		-- Explicit neutral diffuse detail; the old placeholder did not exist.
+		splatDetailTex = "splat_detail_neutral.png",
 		splatDistrTex = "LastDayOfDubai_distribution.dds", --Rock, sand, tar, grass, rock
 		--detailNormalTex = "detail_normal.dds", --holy crap we can do 8K?
 		--skyReflectModTex = "dubai_specular.png",
-		splatDetailNormalDiffuseAlpha = 0.0,
+		splatDetailNormalDiffuseAlpha = false,
 		----splatDetailNormalTex1 = "Ground_MossSolid_1k_dnts.tga";
 		--the order is cliffs, pebbles, grass, metalspots
 
@@ -115,7 +116,7 @@ local mapinfo = {
 
 	splats = {
 		texScales = {0.05, 0.25, 0.006125, 0.625},
-		texMults  = {0.95, 0.35, 0.86, 0.5}, --dunes, rock, tar, grass
+		texMults  = {0.24, 0.18, 0.17, 0.20}, -- dunes, rock, tar, grass; restrained normal blend
 	},
 
 	atmosphere = {
@@ -146,7 +147,7 @@ local mapinfo = {
 		  0.78,
     },
 		skyDir       = {0.0, 0.0, -1.0},
-		skyBox       = "cleardesert.dds",
+		skyBox       = "skyboxes/clear-day.dds",
 
 		cloudDensity = 0.25,
 	},

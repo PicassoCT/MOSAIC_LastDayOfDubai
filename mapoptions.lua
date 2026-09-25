@@ -36,6 +36,26 @@
 --------------------------------------------------------------------------------
 
 local options = {
+    {
+        key = 'dhubai_sky', name = 'Dhubai skybox', type = 'list', def = 'clear-day',
+        desc = 'Static sky background; does not change game time, lighting or rainfall.',
+        items = {
+            {key='clear-day', name='Clear daylight'},
+            {key='overcast-day', name='Overcast daylight'},
+            {key='sunset-sandstorm', name='Sunset and sandstorm'},
+            {key='rainy-night', name='Rainy night'},
+            {key='original', name='Original desert'},
+        },
+    },
+    {
+        key = 'dhubai_splats', name = 'Terrain normal detail', type = 'list', def = 'subtle',
+        desc = 'Compare terrain normal strength without changing texture scale or distribution.',
+        items = {
+            {key='subtle', name='Subtle'},
+            {key='original', name='Original strength'},
+            {key='off', name='Off (diagnostic)'},
+        },
+    },
  	--[[{
 	    key    = 'Roads',
 	    name   = 'Roads',

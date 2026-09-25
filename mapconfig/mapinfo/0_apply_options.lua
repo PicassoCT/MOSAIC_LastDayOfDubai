@@ -1,7 +1,20 @@
 
 
 if Spring.GetMapOptions then
-  local mapOptions = Spring.GetMapOptions()
+  local mapOptions = Spring.GetMapOptions() or {}
+  local skies = {
+    ['clear-day'] = 'skyboxes/clear-day.dds',
+    ['overcast-day'] = 'skyboxes/overcast-day.dds',
+    ['sunset-sandstorm'] = 'skyboxes/sunset-sandstorm.dds',
+    ['rainy-night'] = 'skyboxes/rainy-night.dds',
+    original = 'cleardesert.dds',
+  }
+  mapinfo.atmosphere.skybox = skies[mapOptions.dhubai_sky] or skies['clear-day']
+  if mapOptions.dhubai_splats == 'original' then
+    mapinfo.splats.texmults = {0.95, 0.35, 0.86, 0.5}
+  elseif mapOptions.dhubai_splats == 'off' then
+    mapinfo.splats.texmults = {0, 0, 0, 0}
+  end
   --Spring.Echo("Spring.GetMapOptions Selected mapOptions: Waterdamage:",mapOptions.waterdamage,"Dry:",mapOptions.dry)
   if mapOptions.waterdamage == "1" or mapOptions.waterdamage == true  then
 	mapinfo.water.damage = 50
