@@ -146,7 +146,8 @@ local mapinfo = {
 		  0.92,
 		  0.78,
     },
-		skyDir       = {0.0, 0.0, -1.0},
+		-- Recoil expects axis-angle in radians; quarter-turn around world up.
+		skyAxisAngle = {0.0, 1.0, 0.0, math.pi / 2},
 		skyBox       = "skyboxes/clear-day.dds",
 
 		cloudDensity = 0.25,
