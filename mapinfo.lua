@@ -106,7 +106,7 @@ local mapinfo = {
 		----splatDetailNormalTex1 = "Ground_MossSolid_1k_dnts.tga";
 		--the order is cliffs, pebbles, grass, metalspots
 
-		splatDetailNormalTex1 = "Normal_Detail_Rocky.png", -- broad stone, no dune ridges
+		splatDetailNormalTex1 = "Normal_Detail_Sand_Fine_2k.png", -- sand mask only; preserve asphalt and other materials
 		splatDetailNormalTex2 = "Normal_Detail_Rocky.png", --r	
 		splatDetailNormalTex3 = "Normal_Detail_Tar.png", --b
 		splatDetailNormalTex4 = "Normal_Detail_Grass.png", -- a
@@ -116,7 +116,7 @@ local mapinfo = {
 
 	splats = {
 		texScales = {0.0125, 0.025, 0.006125, 0.625},
-		texMults  = {0.12, 0.12, 0.17, 0.20}, -- broad stone, rock, tar, grass
+		texMults  = {0.12, 0.12, 0.17, 0.20}, -- sand, rock, tar, grass
 	},
 
 	atmosphere = {
@@ -146,9 +146,9 @@ local mapinfo = {
 		  0.92,
 		  0.78,
     },
-		-- Recoil uses radians: +45 degrees from the previous orientation.
-		-- Sea: minimap upper-right -> top; desert: lower-left -> bottom.
-		skyAxisAngle = {0.0, 1.0, 0.0, 3 * math.pi / 4},
+		-- Reverse the previous +45 correction: 90 - 45 = 45 degrees total.
+		-- Alignment still requires in-engine confirmation against the north coast.
+		skyAxisAngle = {0.0, 1.0, 0.0, math.pi / 4},
 		skyBox       = "skyboxes/clear-day.dds",
 
 		cloudDensity = 0.25,

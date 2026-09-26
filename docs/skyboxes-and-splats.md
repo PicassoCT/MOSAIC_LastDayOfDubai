@@ -43,11 +43,24 @@ Generated source seams and poles are not guaranteed seamless by conversion.
 
 ## Terrain detail
 
-The default `subtle` option replaces the dune normal layer with the existing
-rock normal texture. Its scale is four times broader; the rock layer is ten
-times broader. Both weights are 0.12. This removes dune ridges from the layer
-that appears near the shore without repainting the distribution or base terrain.
-It also affects inland areas using those same distribution channels.
+The default `subtle` option uses `Normal_Detail_Sand_Fine_2k.png` in the original
+sand distribution channel. Rock is no longer substituted for sand. The material
+mask, terrain colour and asphalt assignment are unchanged. Sand repeat scale stays
+at 0.0125 and weight at 0.12, so finer pixels do not increase ripple repetition.
+The rock channel retains scale 0.025 and weight 0.12.
+
+The new sand normal was generated from the original sand normal with the built-in
+image generator. Prompt: preserve broad diagonal dune arrangement, spacing and
+gentle amplitude; add restrained fine sand grain; retain tangent-space encoding;
+no rocks, shadows, lighting or new large ridges; tile across both axes. Requested
+2K generation returned 1254x1254. Runtime packaging resamples to 2048x2048 and
+normalizes vectors: this is not native 2K source detail. Seam continuity and the
+final in-engine appearance still need inspection. The original texture is kept.
+Recondition an input using `python3 tools/pack_sand_normal.py INPUT OUTPUT`.
+
+Sky orientation is now 45 degrees total (`math.pi / 4`), reversing the previous
++45 adjustment relative to the earlier 90-degree setting. Validate against the
+north coast in-engine; this does not address the panorama seams.
 
 `original` restores the dune texture, all original scales and weights.
 `off` disables detail-normal influence for diagnosis.
