@@ -146,8 +146,9 @@ local mapinfo = {
 		  0.92,
 		  0.78,
     },
-		-- Recoil expects axis-angle in radians; quarter-turn around world up.
-		skyAxisAngle = {0.0, 1.0, 0.0, math.pi / 2},
+		-- Recoil uses radians: +45 degrees from the previous orientation.
+		-- Sea: minimap upper-right -> top; desert: lower-left -> bottom.
+		skyAxisAngle = {0.0, 1.0, 0.0, 3 * math.pi / 4},
 		skyBox       = "skyboxes/clear-day.dds",
 
 		cloudDensity = 0.25,
