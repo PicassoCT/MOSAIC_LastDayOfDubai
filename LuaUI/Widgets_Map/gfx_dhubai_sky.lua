@@ -5,6 +5,7 @@ end
 
 local dayLength = 28800 -- same frame clock and noon offset as MOSAIC rain
 local elapsed, current, wet = 0, nil, false
+local dusty = false
 local loaded = {}
 
 local function updateSky()
@@ -12,10 +13,19 @@ local function updateSky()
     -- This is the rain renderer's actual local wetness, including /weatherman.
     local rain = WG.GetVehicleHeadlightWetness and WG.GetVehicleHeadlightWetness() or 0
     if rain >= 0.25 then wet = true elseif rain <= 0.10 then wet = false end
+    local weather, strength = 'clear', 0
+    if WG.DhubaiWeather then weather, strength = WG.DhubaiWeather.GetState() end
+    if weather == 'sandstorm' and strength >= 0.35 then
+        dusty = true
+    elseif weather ~= 'sandstorm' or strength <= 0.12 then
+        dusty = false
+    end
     local name
     if p < 0.25 or p >= 0.75 then
         -- Only one night panorama is currently available; it includes rain clouds.
         name = 'rainy-night'
+    elseif dusty and not wet then
+        name = 'sunset-sandstorm'
     else
         name = wet and 'overcast-day' or 'clear-day'
     end
