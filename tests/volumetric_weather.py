@@ -126,6 +126,28 @@ runtime.execute('''
         assert(activeShader==0 and attribStack==0 and matrixStack==0, 'GL state leaked')
     end
     assert(copies==3 and draws==6)
+    local providerCalls, active = 0, nil
+    local ownedTexRect=gl.TexRect
+    local field={version=1,texture='borrowed-radiance',heights='borrowed-heights',
+        occupancy='borrowed-occupancy',strength=2,headlights='borrowed-headlights',headlightIntensity=1}
+    WG.GetMosaicFogRadiance=function() providerCalls=providerCalls+1; return field end
+    gl.UniformInt=function(name,value) if name=='radianceActive' then active=value end end
+    gl.TexRect=function(...)
+        if activeShader~=0 and active==1 then
+            assert(bound[2]==field.texture and bound[3]==field.heights and bound[4]==field.occupancy)
+            assert(bound[5]==field.headlights)
+        end
+        ownedTexRect(...)
+    end
+    widget:DrawWorld(); assert(active==1 and providerCalls==1)
+    field.heights='new-heights-after-reload'; widget:DrawWorld(); assert(active==1)
+    field.heights=nil; widget:DrawWorld(); assert(active==0,'flat radiance enabled without height bounds')
+    widget:TextCommand('dhubaiweather light off')
+    local before=providerCalls;widget:DrawWorld();assert(active==0 and providerCalls==before)
+    widget:TextCommand('dhubaiweather light on');field.heights='borrowed-heights'
+    widget:TextCommand('dhubaiweather off');widget:DrawWorld();assert(providerCalls==before,'clear weather requests height work')
+    widget:TextCommand('dhubaiweather fog');WG.GetMosaicFogRadiance=nil
+    widget:DrawWorld();assert(active==0,'provider shutdown left stale lighting enabled')
     assert(not WG.DhubaiWeather.SetMode('invalid'))
     viewX=1; viewY=1; widget:ViewResize(); widget:DrawWorld()
     local count=0; for _ in pairs(textures) do count=count+1 end; assert(count==2)
