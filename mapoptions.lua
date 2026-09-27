@@ -37,6 +37,17 @@
 
 local options = {
     {
+        key = 'dhubai_weather', name = 'Dhubai volumetric weather', type = 'list', def = 'automatic',
+        desc = 'Occasional dawn fog, city smog and desert sandstorms, with clear weather between events.',
+        items = {
+            {key='automatic', name='Automatic'},
+            {key='off', name='Off'},
+            {key='fog', name='Persistent morning fog'},
+            {key='smog', name='Persistent city smog'},
+            {key='sandstorm', name='Persistent sandstorm'},
+        },
+    },
+    {
         key = 'dhubai_sky', name = 'Dhubai skybox', type = 'list', def = 'automatic',
         desc = 'Automatic follows MOSAIC time and rain; other choices lock the background.',
         items = {
