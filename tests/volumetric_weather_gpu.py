@@ -62,7 +62,8 @@ def camera(eye=(4096,650,7000), target=(4096,80,2500), zero=False, ortho=False, 
         return p[...,:3]/p[...,3:]
     origin=unproject(0 if zero else -1);far_pos=unproject(1)
     direction=far_pos-origin;direction/=np.linalg.norm(direction,axis=-1,keepdims=True)
-    t=np.where(direction[...,1]<0,(40-origin[...,1])/direction[...,1],np.inf)
+    with np.errstate(divide='ignore',invalid='ignore'):
+        t=np.where(direction[...,1]<0,(40-origin[...,1])/direction[...,1],np.inf)
     t=np.where(t>0,t,np.inf)
     base=np.zeros((h,w,3));base[:]=(.36,.46,.55)
     base[np.isfinite(t)]=(.30,.28,.23)
@@ -119,6 +120,67 @@ assert late[...,3].sum()>early[...,3].sum()*1.1,'dust front does not advance'
 render(eventPhase=.5)
 profile('smog');day=render();night=render(sundir=(.3,-.6,-.4))
 assert night[...,:3].sum()<day[...,:3].sum()*.4,'smog glows white at night'
+# Bounded local light must scatter at the source's world height, not form columns.
+field_size=64
+radiance_data=np.zeros((field_size,field_size,3),dtype='f4');radiance_data[:]=(2,.02,.01)
+height_data=np.zeros((field_size,field_size,4),dtype='f4')
+occupancy_data=np.zeros((field_size,field_size,1),dtype='f4')
+headlight_data=np.zeros((field_size,field_size,3),dtype='f4')
+fields=[]
+for slot,data in [(2,radiance_data),(3,height_data),(4,occupancy_data),(5,headlight_data)]:
+    tex=ctx.texture((field_size,field_size),data.shape[-1],data.tobytes(),dtype='f4')
+    tex.filter=(moderngl.NEAREST,moderngl.NEAREST);tex.use(slot);fields.append(tex)
+for n,v in dict(radianceTex=2,heightEnvelopeTex=3,occupancyTex=4,headlightTex=5,
+                radianceStrength=2,headlightActive=0,headlightIntensity=1).items():program[n].value=v
+noise.use(1);depth_tex.use(0)
+profile('sandstorm')
+camera(eye=(4096,500,7000),target=(4096,500,3000),ortho=True,foreground=False)
+row_y=500+((np.arange(h)+.5)/h*2-1)*2400
+
+def lighting_delta():
+    unlit=render(radianceActive=0)
+    lit=render(radianceActive=1)
+    assert np.array_equal(lit[...,3],unlit[...,3]),'lighting changed fog opacity'
+    return lit[...,:3]-unlit[...,:3]
+
+def set_height(bottom,top,fade):
+    height_data[:]=(bottom,top,fade,1);fields[1].write(height_data.tobytes())
+
+for bottom,top,fade in [(0,40,24),(300,420,32),(200,700,100)]:
+    set_height(bottom,top,fade);delta=lighting_delta()
+    assert delta[(row_y>bottom)&(row_y<top)].sum()>1,'no light at source height'
+    assert np.abs(delta[(row_y<bottom-fade)|(row_y>top+fade)]).max()<1e-6,'infinite light column'
+# Two distinct source heights next to each other must leave intermediate air dark.
+height_data[:,:field_size//2]=(0,40,24,1);height_data[:,field_size//2:] = (300,420,32,1)
+radiance_data[:,:field_size//2]=(2,0,0);radiance_data[:,field_size//2:]=(0,0,2)
+fields[0].write(radiance_data.tobytes());fields[1].write(height_data.tobytes())
+delta=lighting_delta();assert np.abs(delta[(row_y>100)&(row_y<240)]).max()<1e-6,'invented emitter between heights'
+assert delta[(row_y>0)&(row_y<40),:w//2,0].sum()>0
+assert delta[(row_y>300)&(row_y<420),w//2:,2].sum()>0
+set_height(0,1000,24)
+occupancy_data[:]=1;fields[2].write(occupancy_data.tobytes())
+assert np.abs(lighting_delta()).max()<1e-6,'light leaked into occupied columns'
+occupancy_data[:]=0;fields[2].write(occupancy_data.tobytes())
+height_data[...,3]=0;fields[1].write(height_data.tobytes())
+assert np.abs(lighting_delta()).max()<1e-6,'missing metadata fell back to a light column'
+set_height(0,40,24);radiance_data[:]=0;fields[0].write(radiance_data.tobytes())
+assert np.abs(lighting_delta()).max()<1e-6,'removed light left glow'
+headlight_data[:]=(1,.9,.7);fields[3].write(headlight_data.tobytes())
+program['headlightActive'].value=1
+assert lighting_delta().sum()>1,'live headlights absent'
+program['headlightIntensity'].value=0
+assert np.abs(lighting_delta()).max()<1e-6,'day-disabled headlights still lit fog'
+program['headlightActive'].value=0
+# Same emitting strip farther behind the fog must be dimmer after extinction.
+set_height(0,1000,24)
+def strip(z0,z1):
+    radiance_data[:]=0;radiance_data[z0:z1,:,:]=1;fields[0].write(radiance_data.tobytes())
+    return lighting_delta().sum()
+near=strip(36,48);far=strip(8,20)
+assert 0<far<near,'foreground fog did not attenuate distant light'
+assert render(strength=0).max()==0,'clear air emitted local fog light'
+render(strength=1,radianceActive=0)
+print('PASS fog light: finite unit/lamp height, no intermediate-height source, occupancy, provider/removal, headlights, extinction')
 print('PASS production GLSL + map DDS: all presets, depth conventions, pause, animation,')
 print('     orthographic/inside/horizontal cameras, foreground clipping, dust front, night shading')
 if '--preview' in sys.argv:

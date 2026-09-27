@@ -18,6 +18,14 @@ uniform int weatherKind; // 1 dawn fog, 2 city smog, 3 sandstorm
 uniform float eventPhase;
 uniform vec2 mapSize;
 uniform float time;
+uniform sampler2D radianceTex;
+uniform sampler2D heightEnvelopeTex;
+uniform sampler2D occupancyTex;
+uniform sampler2D headlightTex;
+uniform int radianceActive;
+uniform int headlightActive;
+uniform float radianceStrength;
+uniform float headlightIntensity;
 in vec2 screenUV;
 
 const mat3 octaveRotation = mat3(0.00, 0.80, 0.60, -0.80, 0.36, -0.48, -0.60, -0.48, 0.64)*2.01;
@@ -58,6 +66,25 @@ float densityAt(vec3 p) {
     return cloudNoise(p)*vertical*region;
 }
 
+vec3 localFogLight(vec3 p) {
+    if(radianceActive == 0) return vec3(0.0);
+    vec2 uv = p.xz/mapSize;
+    if(any(lessThan(uv,vec2(0.0))) || any(greaterThanEqual(uv,vec2(1.0)))) return vec3(0.0);
+    // NEAREST-filtered bounds belong to one actual source unit/lamp. Never blend
+    // heights from different buildings into a fictional emitter between floors.
+    vec4 envelope = texture2D(heightEnvelopeTex,uv);
+    if(envelope.a <= 0.0 || envelope.b <= 0.0) return vec3(0.0);
+    float outside = max(max(envelope.r-p.y,p.y-envelope.g),0.0);
+    if(outside >= envelope.b) return vec3(0.0);
+    float vertical = 1.0-smoothstep(0.0,envelope.b,outside);
+    // Reuse the cascade's conservative horizontal shadowing, with no new shadow rays.
+    if(texture2D(occupancyTex,uv).r > 0.5) return vec3(0.0);
+    vec3 light = max(texture2D(radianceTex,uv).rgb,vec3(0.0));
+    if(headlightActive != 0)
+        light = max(light,max(texture2D(headlightTex,uv).rgb,vec3(0.0))*headlightIntensity);
+    return (vec3(1.0)-exp(-light*radianceStrength))*vertical*envelope.a;
+}
+
 void main() {
     gl_FragColor = vec4(0.0);
     if (strength <= 0.0 || opacity <= 0.0) return;
@@ -86,21 +113,30 @@ void main() {
     float opticalDepth = 0.0;
     float lightSum = 0.0;
     float densitySum = 0.0;
+    vec3 scatteredLight = vec3(0.0);
     vec3 lightDirection = sundir/max(length(sundir), 0.001);
     for (int i = 0; i < steps; ++i) {
         vec3 p = origin+direction*(begin+(float(i)+0.5)*stepLength);
         float density = densityAt(p);
-        opticalDepth += density*stepLength*extinction*strength;
+        float stepDepth = density*stepLength*extinction*strength;
+        // Front-to-back transmittance: a distant glow cannot shine through a
+        // thick foreground bank. Height is checked at EVERY density sample.
+        if(density > 0.0001)
+            scatteredLight += localFogLight(p)*exp(-opticalDepth)*(1.0-exp(-stepDepth));
+        opticalDepth += stepDepth;
         // Neighbour density gives softly shaded lobes, with no game lighting dependency.
         float visibility = clamp(0.35+(density-densityAt(p+lightDirection*65.0))*2.5, 0.12, 1.0);
         lightSum += visibility*density;
         densitySum += density;
     }
-    float alpha = min(opacity, 1.0-exp(-opticalDepth));
+    float physicalAlpha = 1.0-exp(-opticalDepth);
+    float alpha = min(opacity, physicalAlpha);
     float sunlight = smoothstep(-0.12, 0.18, lightDirection.y);
     vec3 ambient = mix(vec3(0.10, 0.13, 0.20), vec3(0.72), sunlight);
     float scattering = lightSum/max(densitySum, 0.001);
     float forwardGlow = pow(max(dot(direction, lightDirection), 0.0), 12.0)*0.22;
     vec3 color = fogColor*(ambient+max(suncolor, vec3(0.0))*sunlight*(scattering*0.38+forwardGlow));
-    gl_FragColor = vec4(color*alpha, alpha);
+    vec3 scatteringTint = mix(vec3(1.0),fogColor,0.35);
+    vec3 localScattering = scatteredLight*scatteringTint*0.7*(alpha/max(physicalAlpha,0.00001));
+    gl_FragColor = vec4(color*alpha+localScattering, alpha);
 }

@@ -16,8 +16,8 @@ because other game effects use them; the map already contains its own 3D noise.
 The entry widget is `gfx_dhubai_volumetric_weather.lua`. Its state and GPU handles
 are local to that widget. Its only shared export is `WG.DhubaiWeather`: startup
 refuses to overwrite an existing owner, and shutdown clears it only when it still
-points to this widget's API. The sky widget reads that API; weather only reads the
-game's optional wetness API.
+points to this widget's API. The sky widget reads that API; weather reads the
+game's optional wetness and height-bounded fog-lighting APIs.
 
 Module and shader reads explicitly use `VFS.MAP`. Named texture loading via
 `gl.Texture` does not accept that archive selector, so the noise lives at the
@@ -63,6 +63,8 @@ With the widget loaded, local visual commands work without cheats:
 /dhubaiweather sandstorm
 /dhubaiweather off
 /dhubaiweather automatic
+/dhubaiweather light off
+/dhubaiweather light on
 ```
 
 Forced previews ignore rain suppression so each preset can be inspected at any
@@ -76,6 +78,38 @@ scene depth, including units. It supports both depth conventions and perspective
 or orthographic cameras, including a camera inside the fog. The 24-step raymarch
 runs at quarter width/height, with no depth copy or raymarch during clear weather.
 Resizes recreate both targets; shutdown releases the owned textures and shader.
+
+## Height-bounded radiance
+
+Local radiance lighting is enabled by default. The matching game changes expose
+`WG.GetMosaicFogRadiance()` with a versioned, read-only descriptor containing
+the existing radiance, occupancy and optional live headlight textures, plus a
+new height envelope texture. The map borrows these handles for one draw and
+never deletes them. Missing providers or height data leave sun lighting active.
+The fog widget draws after radiance and before rain in MOSAIC's widget order.
+
+At each of the 24 ray steps, local light is gated by the source's world-space
+base and top. Buildings use imported model bounds, with unit height as a
+fallback; headlights use the actual lamp anchors, including elevated vehicles.
+Light fades above and below that interval and toward the horizontal reach edge.
+An unknown height contributes no local fog lighting. Front-to-back extinction
+attenuates distant light through the foreground fog. Fog opacity is unchanged.
+
+This is an approximation using the existing horizontal radiance field. Each
+metadata texel selects its nearest source; heights from separate sources are
+not averaged. Overlapping lights at different heights still share the 2D light
+color, and whole-model bounds can overestimate a building's emitting facade.
+The existing horizontal occupancy test is conservative: this is not a full 3D
+light or shadow solve.
+
+The game creates a 512-square RGBA16F height atlas and depth attachment on demand
+(about 3 MiB of texture storage) and refreshes them at the existing 5 Hz capture
+rate. No extra cascade solves or shadow rays are added. The fog shader adds one
+height lookup per nonempty ray step and occupancy/light lookups only inside the
+envelope. `/dhubaiweather light off` disables these lookups and stops requesting
+height refreshes; clear weather likewise makes no requests. The game stops
+refreshing the atlas after a 0.6-second grace period and retains its allocation
+until shutdown. This cost has not been timed on a GTX 1050 Ti.
 
 ## Paired migration
 
@@ -91,5 +125,7 @@ python tests/volumetric_weather.py
 MESA_GL_VERSION_OVERRIDE=3.3COMPAT python tests/volumetric_weather_gpu.py
 ```
 
-The tests exercise the production scheduler, widget lifecycle and GLSL. Final
-visual tuning still needs a Recoil run on the map with the three forced presets.
+The tests exercise the production scheduler, widget lifecycle and GLSL, including
+finite light height, elevated sources, provider removal, occupancy, headlight
+intensity and extinction. Final visual tuning and hardware timing still need a
+Recoil run on the map with the three forced presets and lighting on/off.
