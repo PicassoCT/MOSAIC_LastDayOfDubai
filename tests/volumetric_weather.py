@@ -43,13 +43,14 @@ print('PASS scheduler:', dict(counts), 'active fraction', round(active/samples, 
 for path in [*ROOT.glob('LuaUI/Widgets_Map/**/*.lua'), ROOT/'mapoptions.lua']:
     lua.execute('assert(loadstring(...))', path.read_text())
 
-def new_widget(fail_texture=False, fail_shader=False, option='automatic'):
+def new_widget(fail_texture=False, fail_shader=False, option='automatic', collision=False):
     runtime = LuaRuntime(unpack_returned_tuples=True)
     runtime.globals().read_file = lambda path: (ROOT/path).read_text() if (ROOT/path).is_file() else None
     runtime.globals().file_exists = lambda path: (ROOT/path).is_file()
     runtime.globals().failTexture = fail_texture
     runtime.globals().failShader = fail_shader
     runtime.globals().option = option
+    runtime.globals().collision = collision
     runtime.execute('''
         widget = {}; WG = {}; textures = {}; bound = {}; shaderLive = {}; activeShader = 0
         frame = 0; rain = 0; copies = 0; draws = 0; removes = 0; nextID = 1
@@ -68,6 +69,8 @@ def new_widget(fail_texture=False, fail_shader=False, option='automatic'):
             GetWind=function() return 2, 0, 3 end, Echo=function() end,
         }
         WG.GetVehicleHeadlightWetness=function() return rain end
+        collisionOwner = {marker = 'existing owner'}
+        if collision then WG.DhubaiWeather = collisionOwner end
         widgetHandler = {RemoveWidget=function(_, w) removes=removes+1; w:Shutdown() end}
         gl = {
             CreateShader=function(source)
@@ -106,7 +109,7 @@ def new_widget(fail_texture=False, fail_shader=False, option='automatic'):
         for _, name in ipairs({'DepthTest','DepthMask','Blending','Color','UniformMatrix',
             'Uniform','UniformInt','MatrixMode','LoadIdentity'}) do gl[name]=function() end end
     ''')
-    runtime.execute((ROOT/'LuaUI/Widgets_Map/gfx_volumetric_clouds.lua').read_text())
+    runtime.execute((ROOT/'LuaUI/Widgets_Map/gfx_dhubai_volumetric_weather.lua').read_text())
     runtime.execute('widget:Initialize()')
     return runtime
 
@@ -133,6 +136,11 @@ for fail_texture, fail_shader, option in [(True,False,'automatic'),(False,True,'
     r = new_widget(fail_texture, fail_shader, option)
     r.execute('assert(removes==1 and not WG.DhubaiWeather and next(textures)==nil and next(shaderLive)==nil)')
 
+r = new_widget(collision=True)
+r.execute('assert(removes==1 and WG.DhubaiWeather==collisionOwner and next(textures)==nil and next(shaderLive)==nil)')
+r = new_widget()
+r.execute('WG.DhubaiWeather=collisionOwner; widget:Shutdown(); assert(WG.DhubaiWeather==collisionOwner)')
+
 # Sky integration uses its production widget, including static-sky opt-out.
 runtime.execute('''
     widget={}; skyMode='sandstorm'; skyStrength=1; skyOption='automatic'; selectedSky=nil
@@ -150,6 +158,7 @@ runtime.execute('''
     skyStrength=0.1; widget:Update(1); assert(selectedSky=='maps/skyboxes/clear-day.dds')
     rain=1; widget:Update(1); assert(selectedSky=='maps/skyboxes/overcast-day.dds')
     frame=9000; widget:Update(1); assert(selectedSky=='maps/skyboxes/rainy-night.dds')
+    WG.DhubaiWeather=true; widget:Update(1) -- malformed/foreign API must not crash the sky
     widget:Shutdown()
 ''')
 runtime.execute("widget={}; selectedSky=nil; skyOption='original'")

@@ -11,6 +11,21 @@ spaceport launch clouds, explosions and aerosol effects. Those are unit effects,
 not the atmospheric layer moved here. The game retains its shared noise assets
 because other game effects use them; the map already contains its own 3D noise.
 
+## Namespace and resource ownership
+
+The entry widget is `gfx_dhubai_volumetric_weather.lua`. Its state and GPU handles
+are local to that widget. Its only shared export is `WG.DhubaiWeather`: startup
+refuses to overwrite an existing owner, and shutdown clears it only when it still
+points to this widget's API. The sky widget reads that API; weather only reads the
+game's optional wetness API.
+
+Module and shader reads explicitly use `VFS.MAP`. Named texture loading via
+`gl.Texture` does not accept that archive selector, so the noise lives at the
+unique path `LuaUI/Images/Dhubai/Weather/worley_noise_128.dds`, instead of sharing
+the game's noise filename. Shader uniform names belong to their linked program;
+the render targets are newly allocated handles. The draw call preserves GL
+attributes and matrix stacks and unbinds its shader after use.
+
 ## Automatic events
 
 The scheduler uses MOSAIC's 28800-frame day and noon starting offset. A seeded

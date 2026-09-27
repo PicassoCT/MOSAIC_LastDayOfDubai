@@ -24,7 +24,7 @@ fbo = ctx.framebuffer([output]); fbo.use()
 depth_tex = ctx.texture((w,h), 1, dtype='f4'); depth_tex.use(0)
 depth_tex.filter = (moderngl.NEAREST, moderngl.NEAREST)
 # This map's DDS is a single-level 128^3 uncompressed RGBA volume (not generated test noise).
-noise_bytes = (ROOT/'LuaUI/images/noisetextures/worley_rgbnorm_01_asum_128_v1.dds').read_bytes()
+noise_bytes = (ROOT/'LuaUI/Images/Dhubai/Weather/worley_noise_128.dds').read_bytes()
 assert len(noise_bytes) == 128+128**3*4
 noise = ctx.texture3d((128,128,128), 4, noise_bytes[128:]); noise.use(1)
 noise.filter = (moderngl.LINEAR, moderngl.LINEAR)

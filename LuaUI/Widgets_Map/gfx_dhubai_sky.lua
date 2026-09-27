@@ -14,7 +14,9 @@ local function updateSky()
     local rain = WG.GetVehicleHeadlightWetness and WG.GetVehicleHeadlightWetness() or 0
     if rain >= 0.25 then wet = true elseif rain <= 0.10 then wet = false end
     local weather, strength = 'clear', 0
-    if WG.DhubaiWeather then weather, strength = WG.DhubaiWeather.GetState() end
+    if type(WG.DhubaiWeather) == 'table' and type(WG.DhubaiWeather.GetState) == 'function' then
+        weather, strength = WG.DhubaiWeather.GetState()
+    end
     if weather == 'sandstorm' and strength >= 0.35 then
         dusty = true
     elseif weather ~= 'sandstorm' or strength <= 0.12 then

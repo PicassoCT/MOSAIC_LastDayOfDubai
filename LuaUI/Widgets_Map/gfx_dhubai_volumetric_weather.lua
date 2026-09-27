@@ -10,7 +10,8 @@ end
 local base = 'LuaUI/Widgets_Map/'
 local Weather = VFS.Include(base .. 'Include/dhubai_weather.lua', nil, VFS.MAP)
 local controller = Weather.New(Game.mapChecksum)
-local noiseTexture = 'LuaUI/images/noisetextures/worley_rgbnorm_01_asum_128_v1.dds'
+-- gl.Texture has no VFS.MAP argument: keep named GPU assets in a map-specific path.
+local noiseTexture = 'LuaUI/Images/Dhubai/Weather/worley_noise_128.dds'
 local shader, depthTexture, fogTexture
 local uniforms = {}
 local vsx, vsy, vpx, vpy
@@ -60,6 +61,9 @@ end
 function widget:Initialize()
     forced = (Spring.GetMapOptions() or {}).dhubai_weather or 'automatic'
     if forced == 'off' then widgetHandler:RemoveWidget(self); return end
+    if WG.DhubaiWeather ~= nil then
+        remove('another widget already owns WG.DhubaiWeather'); return
+    end
     if not gl.CreateShader or not gl.RenderToTexture or not gl.CopyToTexture then
         remove('GLSL and render-to-texture support are required'); return
     end
