@@ -37,7 +37,7 @@ visibility, targeting, wind, or rain.
 | --- | --- | --- | --- | --- |
 | Morning fog | 48% | 04:19–04:55 | 125–149 seconds | Cool, low banks strongest toward the northern coast; gone before 08:39 |
 | Smog | 28% | 10:05–11:31 | 96–134 seconds | Slow warm gray haze over the central city |
-| Sandstorm | 14% | 14:10–15:29 | 101–134 seconds | Taller amber dust front advancing north from the southern desert |
+| Sandstorm | 14% | 14:10–15:29 | 101–134 seconds | Amber dust front with shallow drifting sand waves entering from the southern desert |
 
 Smog and sandstorms are mutually exclusive on a given day. Events fade in over
 their first 23% and out over their final 32%, leaving most of each day clear.
@@ -77,7 +77,32 @@ noise, shades density lobes with the sun, and clips rays against the rendered
 scene depth, including units. It supports both depth conventions and perspective
 or orthographic cameras, including a camera inside the fog. The 24-step raymarch
 runs at quarter width/height, with no depth copy or raymarch during clear weather.
-Resizes recreate both targets; shutdown releases the owned textures and shader.
+During sandstorms, an additional 24 samples cover only the terrain-height band;
+they are merged front-to-back with the existing 24 atmospheric samples. Fog and
+smog retain their 24 samples. Resizes recreate both targets; shutdown releases the owned textures and shader.
+
+## Southern sand waves
+
+Sandstorm phases include broken, curling bands of blowing sand entering at the
+southern border (`+Z`) and drifting north (`-Z`). They follow the engine's live
+`$heightmap`, with density strongest just above the surface and fading completely
+within 64 world units. The map borrows this texture without allocating or deleting
+it. Water is excluded, and the waves thin toward the coast. Terrain materials
+and the sand/asphalt splat mask are unchanged.
+
+The wave layer uses the same event phase, strength, rain suppression, sun and
+local-light integration as the storm. Its leading edge advances inward from the
+south; noise breaks up the crests rather than creating straight uniform stripes.
+Animation uses simulation time, so pausing freezes it. Storm profile speed also
+scales drift: the default is about 91 world units per second with roughly 640-unit
+crest spacing. These values, the 64-unit height cap and density multiplier live
+in `sandWaveDensity` in `Shaders/fogShader.frag`.
+
+Use `/dhubaiweather sandstorm` to inspect persistent waves, and
+`/dhubaiweather automatic` to restore the normal schedule. Automated GLSL checks
+cover southern entry, northward motion, terrain following, water exclusion,
+pause, depth clipping and both depth conventions. These are synthetic GPU scenes;
+final appearance and the added storm-only sampling cost need an in-game check.
 
 ## Height-bounded radiance
 

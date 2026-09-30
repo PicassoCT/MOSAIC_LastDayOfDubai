@@ -31,6 +31,11 @@ noise.filter = (moderngl.LINEAR, moderngl.LINEAR)
 for n, v in dict(depthtex=0,noise3dtex=1,zeroToOne=0,offset=(0,0,0),sundir=(0.3,0.6,-0.4),
                  suncolor=(1,0.92,0.78),strength=1,eventPhase=0.5,mapSize=(8192,8192),time=15).items():
     program[n].value = v
+terrain_data = np.full((65,65),40,dtype='f4')
+terrain = ctx.texture((65,65),1,terrain_data.tobytes(),dtype='f4'); terrain.use(6)
+terrain.filter = (moderngl.LINEAR,moderngl.LINEAR)
+program['terrainHeightTex'].value=6
+program['groundWaveBounds'].value=(40,104)
 weather = LuaRuntime(unpack_returned_tuples=True).execute(
     (ROOT/'LuaUI/Widgets_Map/Include/dhubai_weather.lua').read_text())
 
@@ -180,6 +185,45 @@ near=strip(36,48);far=strip(8,20)
 assert 0<far<near,'foreground fog did not attenuate distant light'
 assert render(strength=0).max()==0,'clear air emitted local fog light'
 render(strength=1,radianceActive=0)
+# Probe the production wave density, independently of the tall storm veil.
+source=(shader_root/'fogShader.frag').read_text().replace('void main() {','void atmosphereMain() {')
+probe=ctx.program(vertex_shader=(shader_root/'fogShader.vert').read_text(), fragment_shader=source+"""
+void main() {
+    vec3 p=vec3(mapSize.x*0.5, screenUV.y*240.0, screenUV.x*mapSize.y);
+    gl_FragColor=vec4(sandWaveDensity(p),0.0,0.0,1.0);
+}
+""")
+for n,v in dict(terrainHeightTex=6,noise3dtex=1,mapSize=(8192,8192),eventPhase=.65,time=0).items():
+    probe[n].value=v
+# Texture creation changes active bindings in some drivers.
+terrain.use(6);noise.use(1)
+def wave_probe(height=40, phase=.65, seconds=0):
+    terrain_data[:]=height;terrain.write(terrain_data.tobytes())
+    probe['eventPhase'].value=phase;probe['time'].value=seconds
+    gl.glUseProgram(probe.glo);gl.glBegin(7)
+    for x,y,u,v in [(-1,-1,0,0),(1,-1,1,0),(1,1,1,1),(-1,1,0,1)]:
+        gl.glTexCoord2f(u,v);gl.glVertex2f(x,y)
+    gl.glEnd();gl.glUseProgram(0)
+    return np.frombuffer(output.read(),dtype='f4').reshape(h,w,4)[...,0].copy()
+a=wave_probe();heights=(np.arange(h)+.5)/h*240
+assert a.sum()>1, 'ground waves invisible'
+assert a[(heights<=40)|(heights>=104)].max()==0, 'waves escape shallow terrain layer'
+b=wave_probe(height=140)
+assert b[(heights<=140)|(heights>=204)].max()==0 and b.sum()>1, 'waves do not follow terrain'
+assert np.allclose(a[:-100],b[100:],atol=1e-5), 'wave shape is fixed at sea level'
+assert wave_probe(height=-10).max()==0, 'sand waves over water'
+early=wave_probe(phase=0)
+assert early[:,:int(w*.97)].max()==0 and early[:,-5:].sum()>0, 'waves did not enter at southern edge'
+late=wave_probe(phase=.6)
+assert late[:,:w//2].sum()>0, 'waves never enter northern map'
+a=wave_probe();assert np.array_equal(a,wave_probe()), 'paused waves move'
+b=wave_probe(seconds=(8192/w)/140)
+# +time in sampled Z must move crests exactly one pixel north (toward smaller Z).
+z=(np.arange(w)+.5)/w
+weight=.35+.65*z
+assert np.allclose(a[:,1:]/weight[1:],b[:,:-1]/weight[:-1],atol=2e-4), 'waves drift south instead of north'
+assert ctx.error=='GL_NO_ERROR'
+print('PASS sand waves: southern entry, northward drift, 64-unit terrain following, water exclusion, pause')
 print('PASS fog light: finite unit/lamp height, no intermediate-height source, occupancy, provider/removal, headlights, extinction')
 print('PASS production GLSL + map DDS: all presets, depth conventions, pause, animation,')
 print('     orthographic/inside/horizontal cameras, foreground clipping, dust front, night shading')

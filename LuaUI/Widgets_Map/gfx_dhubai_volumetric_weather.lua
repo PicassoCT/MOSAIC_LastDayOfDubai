@@ -1,7 +1,7 @@
 -- Atmospheric renderer moved from MOSAIC's disabled Volumetric Clouds widget.
 -- Original: Anarchid, consulted and optimized by jK, GNU GPL v2 or later.
 function widget:GetInfo()
-    return {name = 'Dhubai volumetric weather', version = 8,
+    return {name = 'Dhubai volumetric weather', version = 9,
         desc = 'Occasional dawn fog, city smog and desert sandstorms',
         author = 'Anarchid, jK, MOSAIC contributors', license = 'GNU GPL v2 or later',
         -- MOSAIC draws higher layers first: after radiance (-9), before rain (-13).
@@ -76,13 +76,13 @@ function widget:Initialize()
     end
     shader = gl.CreateShader({vertex = vertex, fragment = fragment,
         uniformInt = {depthtex = 0, noise3dtex = 1, radianceTex = 2,
-            heightEnvelopeTex = 3, occupancyTex = 4, headlightTex = 5,
+            heightEnvelopeTex = 3, occupancyTex = 4, headlightTex = 5, terrainHeightTex = 6,
             zeroToOne = (Platform and Platform.glSupportClipSpaceControl) and 1 or 0}})
     if not shader then remove('shader compilation failed: ' .. tostring(gl.GetShaderLog())); return end
     for _, name in ipairs({'viewProjectionInv', 'offset', 'sundir', 'suncolor', 'fogColor',
         'fogBounds', 'noiseScale', 'extinction', 'opacity', 'strength', 'weatherKind',
         'eventPhase', 'mapSize', 'time', 'zeroToOne', 'radianceActive',
-        'radianceStrength', 'headlightActive', 'headlightIntensity'}) do
+        'radianceStrength', 'headlightActive', 'headlightIntensity', 'groundWaveBounds'}) do
         uniforms[name] = gl.GetUniformLocation(shader, name)
     end
     self:ViewResize()
@@ -147,8 +147,9 @@ local function renderFog()
     gl.Texture(3, radiance and radiance.heights or depthTexture)
     gl.Texture(4, radiance and radiance.occupancy or depthTexture)
     gl.Texture(5, radiance and radiance.headlights or depthTexture)
+    gl.Texture(6, '$heightmap')
     gl.TexRect(-1, -1, 1, 1, 0, 0, 1, 1)
-    for slot = 2, 5 do gl.Texture(slot, false) end
+    for slot = 2, 6 do gl.Texture(slot, false) end
     gl.Texture(1, false)
     gl.Texture(0, false)
 end
@@ -180,7 +181,15 @@ function widget:DrawWorld()
     gl.Uniform(uniforms.sundir, gl.GetSun('pos'))
     gl.Uniform(uniforms.suncolor, gl.GetSun('diffuse'))
     gl.Uniform(uniforms.fogColor, unpack(profile.color))
-    gl.Uniform(uniforms.fogBounds, profile.bottom, profile.fade, profile.height)
+    local bottom, ceiling = profile.bottom, profile.height
+    if mode == 'sandstorm' then
+        local initialMin, initialMax, currentMin, currentMax = Spring.GetGroundExtremes()
+        local groundMin = math.max(0, currentMin or initialMin)
+        local groundMax = math.max(groundMin, currentMax or initialMax) + 64
+        gl.Uniform(uniforms.groundWaveBounds, groundMin, groundMax)
+        bottom, ceiling = math.min(bottom, groundMin), math.max(ceiling, groundMax)
+    end
+    gl.Uniform(uniforms.fogBounds, bottom, profile.fade, ceiling)
     gl.Uniform(uniforms.noiseScale, 1/profile.scale)
     gl.Uniform(uniforms.extinction, profile.extinction)
     gl.Uniform(uniforms.opacity, math.min(0.92, profile.opacity*opacityMult))

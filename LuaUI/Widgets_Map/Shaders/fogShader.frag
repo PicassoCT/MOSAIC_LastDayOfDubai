@@ -3,6 +3,8 @@
 // Live uniforms allow weather fades without shader recompilation.
 uniform sampler2D depthtex;
 uniform sampler3D noise3dtex;
+uniform sampler2D terrainHeightTex; // engine-owned $heightmap, world-space heights
+uniform vec2 groundWaveBounds; // conservative terrain min/max + wave height
 uniform mat4 viewProjectionInv;
 uniform int zeroToOne;
 uniform vec3 offset;
@@ -45,6 +47,30 @@ float cloudNoise(vec3 p) {
     p = octaveRotation*p;
     n += 0.2*texture3D(noise3dtex, fract(p*0.2-time*0.009)).r;
     return smoothstep(0.18, 1.1, n);
+}
+
+// Southern edge is +Z. Positive time in the sampled Z coordinate moves
+// features toward -Z (north), independently of wind or camera orientation.
+float sandWaveDensity(vec3 p) {
+    vec2 uv = p.xz/mapSize;
+    if (any(lessThan(uv, vec2(0.0))) || any(greaterThan(uv, vec2(1.0)))) return 0.0;
+    vec2 size = vec2(textureSize(terrainHeightTex, 0));
+    vec2 heightUV = (uv*(size-1.0)+0.5)/size;
+    float ground = texture2D(terrainHeightTex, heightUV).r;
+    float above = p.y-ground;
+    if (above <= 0.0 || above >= 64.0 || ground <= 0.0) return 0.0;
+    vec3 drift = vec3(p.x/850.0, above/180.0, (p.z+time*140.0)/640.0);
+    float breakup = texture3D(noise3dtex, fract(drift*0.37)).r;
+    float warp = texture3D(noise3dtex, fract(vec3(p.x/2400.0, 0.31, (p.z+time*140.0)/1900.0))).r;
+    float crest = 0.5+0.5*cos(6.2831853*(drift.z+warp*0.8));
+    float bands = smoothstep(0.48, 0.94, crest)*smoothstep(0.12, 0.7, breakup);
+    float height = mix(22.0, 64.0, breakup);
+    float vertical = smoothstep(0.0, 4.0, above)*(1.0-smoothstep(8.0, height, above));
+    float front = mix(1.02, -0.15, smoothstep(0.0, 0.65, eventPhase));
+    float reach = smoothstep(front-0.04, front+0.06, uv.y);
+    float edges = smoothstep(0.0, 0.025, uv.x)*(1.0-smoothstep(0.975, 1.0, uv.x));
+    // Strongest at the desert entrance, thinning toward the coast; never over water.
+    return bands*vertical*reach*edges*smoothstep(0.0, 8.0, ground)*mix(0.35, 1.0, uv.y)*3.5;
 }
 
 float densityAt(vec3 p) {
@@ -108,16 +134,45 @@ void main() {
     }
     if (end <= begin) return;
 
-    const int steps = 24;
-    float stepLength = (end-begin)/float(steps);
+    // Concentrate samples around the terrain so shallow waves cannot fall
+    // between the tall storm's coarse samples. All intervals remain ordered
+    // front-to-back for the existing extinction and local-light integration.
+    float groundBegin = begin;
+    float groundEnd = begin;
+    if (weatherKind == 3) {
+        if (abs(direction.y) < 0.00001) {
+            if (origin.y >= groundWaveBounds.x && origin.y <= groundWaveBounds.y)
+                groundEnd = end;
+        } else {
+            float a = (groundWaveBounds.x-origin.y)/direction.y;
+            float b = (groundWaveBounds.y-origin.y)/direction.y;
+            groundBegin = clamp(min(a, b), begin, end);
+            groundEnd = clamp(max(a, b), begin, end);
+        }
+    }
+    bool groundSamples = weatherKind == 3 && groundEnd > groundBegin;
     float opticalDepth = 0.0;
     float lightSum = 0.0;
     float densitySum = 0.0;
     vec3 scatteredLight = vec3(0.0);
     vec3 lightDirection = sundir/max(length(sundir), 0.001);
-    for (int i = 0; i < steps; ++i) {
-        vec3 p = origin+direction*(begin+(float(i)+0.5)*stepLength);
-        float density = densityAt(p);
+    float fogStep = (end-begin)/24.0;
+    float waveStep = (groundEnd-groundBegin)/24.0;
+    int fogIndex = 0;
+    int waveIndex = 0;
+    // Merge two independent quadratures by distance. Keep the original fog
+    // samples stable when the ground interval becomes tiny or leaves the view.
+    for (int i = 0; i < 48; ++i) {
+        bool hasFog = fogIndex < 24;
+        bool hasWave = groundSamples && waveIndex < 24;
+        if (!hasFog && !hasWave) break;
+        float fogDistance = begin+(float(fogIndex)+0.5)*fogStep;
+        float waveDistance = groundBegin+(float(waveIndex)+0.5)*waveStep;
+        bool wave = hasWave && (!hasFog || waveDistance < fogDistance);
+        float stepLength = wave ? waveStep : fogStep;
+        vec3 p = origin+direction*(wave ? waveDistance : fogDistance);
+        if (wave) ++waveIndex; else ++fogIndex;
+        float density = wave ? sandWaveDensity(p) : densityAt(p);
         float stepDepth = density*stepLength*extinction*strength;
         // Front-to-back transmittance: a distant glow cannot shine through a
         // thick foreground bank. Height is checked at EVERY density sample.
@@ -125,9 +180,10 @@ void main() {
             scatteredLight += localFogLight(p)*exp(-opticalDepth)*(1.0-exp(-stepDepth));
         opticalDepth += stepDepth;
         // Neighbour density gives softly shaded lobes, with no game lighting dependency.
-        float visibility = clamp(0.35+(density-densityAt(p+lightDirection*65.0))*2.5, 0.12, 1.0);
-        lightSum += visibility*density;
-        densitySum += density;
+        float neighbour = wave ? sandWaveDensity(p+lightDirection*16.0) : densityAt(p+lightDirection*65.0);
+        float visibility = clamp(0.35+(density-neighbour)*2.5, 0.12, 1.0);
+        lightSum += visibility*density*stepLength;
+        densitySum += density*stepLength;
     }
     float physicalAlpha = 1.0-exp(-opticalDepth);
     float alpha = min(opacity, physicalAlpha);

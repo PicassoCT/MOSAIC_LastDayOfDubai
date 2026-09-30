@@ -67,6 +67,7 @@ def new_widget(fail_texture=False, fail_shader=False, option='automatic', collis
             GetGameFrame=function() return frame end, GetFrameTimeOffset=function() return 0 end,
             GetViewGeometry=function() return viewX, viewY, 10, 20 end,
             GetWind=function() return 2, 0, 3 end, Echo=function() end,
+            GetGroundExtremes=function() return -20, 80, -20, 80 end,
         }
         WG.GetVehicleHeadlightWetness=function() return rain end
         collisionOwner = {marker = 'existing owner'}
@@ -97,6 +98,7 @@ def new_widget(fail_texture=False, fail_shader=False, option='automatic', collis
                 if activeShader~=0 then
                     assert(textures[bound[0]], 'depth unbound before draw')
                     assert(type(bound[1])=='string' and file_exists(bound[1]), 'noise unbound before draw')
+                    assert(bound[6]=='$heightmap', 'terrain heightmap missing')
                 else assert(textures[bound[0]], 'fog target missing') end
                 draws=draws+1
             end,
@@ -124,6 +126,7 @@ runtime.execute('''
         widget:GameFrame(frame+1); widget:DrawWorld()
         assert(WG.DhubaiWeather.GetState()==name)
         assert(activeShader==0 and attribStack==0 and matrixStack==0, 'GL state leaked')
+        assert(bound[6]==false, 'borrowed terrain texture left bound')
     end
     assert(copies==3 and draws==6)
     local providerCalls, active = 0, nil
