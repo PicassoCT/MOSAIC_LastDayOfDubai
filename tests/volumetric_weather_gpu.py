@@ -34,6 +34,9 @@ for n, v in dict(depthtex=0,noise3dtex=1,zeroToOne=0,offset=(0,0,0),sundir=(0.3,
 terrain_data = np.full((65,65),40,dtype='f4')
 terrain = ctx.texture((65,65),1,terrain_data.tobytes(),dtype='f4'); terrain.use(6)
 terrain.filter = (moderngl.LINEAR,moderngl.LINEAR)
+barrier_data=np.full((1,64),-1,dtype='f4')
+barrier=ctx.texture((64,1),1,barrier_data.tobytes(),dtype='f4');barrier.use(7)
+program['sandBarrierTex'].value=7
 program['terrainHeightTex'].value=6
 program['groundWaveBounds'].value=(40,104)
 weather = LuaRuntime(unpack_returned_tuples=True).execute(
@@ -193,7 +196,7 @@ void main() {
     gl_FragColor=vec4(sandWaveDensity(p),0.0,0.0,1.0);
 }
 """)
-for n,v in dict(terrainHeightTex=6,noise3dtex=1,mapSize=(8192,8192),eventPhase=.65,time=0).items():
+for n,v in dict(terrainHeightTex=6,sandBarrierTex=7,noise3dtex=1,mapSize=(8192,8192),eventPhase=.65,time=0).items():
     probe[n].value=v
 # Texture creation changes active bindings in some drivers.
 terrain.use(6);noise.use(1)
@@ -222,7 +225,41 @@ b=wave_probe(seconds=(8192/w)/140)
 z=(np.arange(w)+.5)/w
 weight=.35+.65*z
 assert np.allclose(a[:,1:]/weight[1:],b[:,:-1]/weight[:-1],atol=2e-4), 'waves drift south instead of north'
+# Build real first-water boundaries from the production barrier shader.
+barrier_program=ctx.program(vertex_shader=(shader_root/'fogShader.vert').read_text(),
+    fragment_shader=(shader_root/'sandBarrier.frag').read_text())
+barrier_program['terrainHeightTex'].value=6
+barrier_fbo=ctx.framebuffer([barrier])
+def scan_barrier():
+    terrain.write(terrain_data.tobytes());terrain.use(6)
+    barrier_fbo.use();ctx.viewport=(0,0,64,1)
+    gl.glUseProgram(barrier_program.glo);gl.glBegin(7)
+    for x,y,u,v in [(-1,-1,0,0),(1,-1,1,0),(1,1,1,1),(-1,1,0,1)]:
+        gl.glTexCoord2f(u,v);gl.glVertex2f(x,y)
+    gl.glEnd();gl.glUseProgram(0)
+    result=np.frombuffer(barrier.read(),dtype='f4').copy()
+    fbo.use();ctx.viewport=(0,0,w,h);barrier.use(7)
+    return result
+terrain_data[:]=40
+assert (scan_barrier()==-1).all(), 'dry corridor blocked'
+terrain_data[36,:]=-10 # one-row river, dry land on both banks
+terrain_data[12,:]=-10 # second river farther north must not be chosen
+stops=scan_barrier()
+assert np.allclose(stops,37/64), 'not the first water from the south'
+# wave_probe resets terrain to dry: the cached route must still forbid the far bank.
+blocked=wave_probe()
+assert blocked[:,:int(w*37/64)].max()==0, 'waves reappeared beyond river'
+assert blocked[:,-w//4:].sum()>0, 'river stopped upstream waves'
+terrain_data[:]=40;terrain_data[-1,:]=-10
+assert (scan_barrier()==1).all(), 'wet southern border admitted waves'
+assert wave_probe().max()==0, 'waves originate beyond a wet southern border'
+terrain_data[:]=40;terrain_data[36,40:]=-10
+stops=scan_barrier()
+assert (stops[:39]==-1).all() and np.allclose(stops[39:],37/64), 'one river blocked unrelated dry corridors'
+terrain_data[:]=40
+assert (scan_barrier()==-1).all(), 'terrain refresh kept stale barriers'
 assert ctx.error=='GL_NO_ERROR'
+print('PASS first-water barrier: narrow river, no far-bank restart, wet border, independent corridors, terrain refresh')
 print('PASS sand waves: southern entry, northward drift, 64-unit terrain following, water exclusion, pause')
 print('PASS fog light: finite unit/lamp height, no intermediate-height source, occupancy, provider/removal, headlights, extinction')
 print('PASS production GLSL + map DDS: all presets, depth conventions, pause, animation,')

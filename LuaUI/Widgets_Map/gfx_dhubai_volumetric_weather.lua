@@ -1,7 +1,7 @@
 -- Atmospheric renderer moved from MOSAIC's disabled Volumetric Clouds widget.
 -- Original: Anarchid, consulted and optimized by jK, GNU GPL v2 or later.
 function widget:GetInfo()
-    return {name = 'Dhubai volumetric weather', version = 9,
+    return {name = 'Dhubai volumetric weather', version = 10,
         desc = 'Occasional dawn fog, city smog and desert sandstorms',
         author = 'Anarchid, jK, MOSAIC contributors', license = 'GNU GPL v2 or later',
         -- MOSAIC draws higher layers first: after radiance (-9), before rain (-13).
@@ -14,6 +14,8 @@ local controller = Weather.New(Game.mapChecksum)
 -- gl.Texture has no VFS.MAP argument: keep named GPU assets in a map-specific path.
 local noiseTexture = 'LuaUI/Images/Dhubai/Weather/worley_noise_128.dds'
 local shader, depthTexture, fogTexture
+local barrierShader, barrierTexture
+local barrierDirty = true
 local uniforms = {}
 local vsx, vsy, vpx, vpy
 local mode, strength, profile, phase = 'clear', 0, nil, 0
@@ -71,12 +73,13 @@ function widget:Initialize()
     end
     local vertex = VFS.LoadFile(base .. 'Shaders/fogShader.vert', VFS.MAP)
     local fragment = VFS.LoadFile(base .. 'Shaders/fogShader.frag', VFS.MAP)
-    if not vertex or not fragment or not VFS.FileExists(noiseTexture, VFS.MAP) then
+    local barrierFragment = VFS.LoadFile(base .. 'Shaders/sandBarrier.frag', VFS.MAP)
+    if not vertex or not fragment or not barrierFragment or not VFS.FileExists(noiseTexture, VFS.MAP) then
         remove('map shader or 3D noise texture missing'); return
     end
     shader = gl.CreateShader({vertex = vertex, fragment = fragment,
         uniformInt = {depthtex = 0, noise3dtex = 1, radianceTex = 2,
-            heightEnvelopeTex = 3, occupancyTex = 4, headlightTex = 5, terrainHeightTex = 6,
+            heightEnvelopeTex = 3, occupancyTex = 4, headlightTex = 5, terrainHeightTex = 6, sandBarrierTex = 7,
             zeroToOne = (Platform and Platform.glSupportClipSpaceControl) and 1 or 0}})
     if not shader then remove('shader compilation failed: ' .. tostring(gl.GetShaderLog())); return end
     for _, name in ipairs({'viewProjectionInv', 'offset', 'sundir', 'suncolor', 'fogColor',
@@ -85,6 +88,15 @@ function widget:Initialize()
         'radianceStrength', 'headlightActive', 'headlightIntensity', 'groundWaveBounds'}) do
         uniforms[name] = gl.GetUniformLocation(shader, name)
     end
+    barrierShader = gl.CreateShader({vertex = vertex, fragment = barrierFragment,
+        uniformInt = {terrainHeightTex = 6}})
+    if not barrierShader then remove('sand barrier shader compilation failed: ' .. tostring(gl.GetShaderLog())); return end
+    barrierTexture = gl.CreateTexture(math.floor(Game.mapSizeX/8), 1, {
+        format = GL.R32F or 0x822E, fbo = true,
+        min_filter = GL.NEAREST, mag_filter = GL.NEAREST,
+        wrap_s = GL.CLAMP_TO_EDGE, wrap_t = GL.CLAMP_TO_EDGE,
+    })
+    if not barrierTexture then remove('could not allocate sand barrier'); return end
     self:ViewResize()
     if not depthTexture or not fogTexture then return end
     ready = true
@@ -148,10 +160,21 @@ local function renderFog()
     gl.Texture(4, radiance and radiance.occupancy or depthTexture)
     gl.Texture(5, radiance and radiance.headlights or depthTexture)
     gl.Texture(6, '$heightmap')
+    gl.Texture(7, barrierTexture)
     gl.TexRect(-1, -1, 1, 1, 0, 0, 1, 1)
-    for slot = 2, 6 do gl.Texture(slot, false) end
+    for slot = 2, 7 do gl.Texture(slot, false) end
     gl.Texture(1, false)
     gl.Texture(0, false)
+end
+
+function widget:UnsyncedHeightMapUpdate()
+    barrierDirty = true
+end
+
+local function renderBarrier()
+    gl.Texture(6, '$heightmap')
+    gl.TexRect(-1, -1, 1, 1, 0, 0, 1, 1)
+    gl.Texture(6, false)
 end
 
 function widget:DrawWorld()
@@ -175,6 +198,11 @@ function widget:DrawWorld()
     gl.DepthMask(false)
     gl.Blending(false)
     gl.Color(1, 1, 1, 1)
+    if mode == 'sandstorm' and barrierDirty then
+        gl.UseShader(barrierShader)
+        gl.RenderToTexture(barrierTexture, renderBarrier)
+        barrierDirty = false
+    end
     gl.UseShader(shader)
     gl.UniformMatrix(uniforms.viewProjectionInv, 'viewprojectioninverse')
     gl.Uniform(uniforms.offset, offsetX, 0, offsetZ)
@@ -222,6 +250,8 @@ function widget:Shutdown()
     ready = false
     if WG.DhubaiWeather == api then WG.DhubaiWeather = nil end
     deleteTargets()
+    if barrierTexture then gl.DeleteTexture(barrierTexture); barrierTexture = nil end
+    if barrierShader then gl.DeleteShader(barrierShader); barrierShader = nil end
     if shader then gl.DeleteShader(shader); shader = nil end
     -- Noise belongs to the map and can be shared by other effects.
 end

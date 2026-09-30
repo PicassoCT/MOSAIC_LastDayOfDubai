@@ -77,7 +77,7 @@ def new_widget(fail_texture=False, fail_shader=False, option='automatic', collis
             CreateShader=function(source)
                 assert(source.vertex and source.fragment)
                 if failShader then return nil end
-                shaderLive[99]=true; return 99
+                local id=nextID; nextID=nextID+1; shaderLive[id]=source; return id
             end,
             DeleteShader=function(id) assert(shaderLive[id]); shaderLive[id]=nil end,
             GetShaderLog=function() return 'test failure' end,
@@ -95,7 +95,9 @@ def new_widget(fail_texture=False, fail_shader=False, option='automatic', collis
             UseShader=function(id) activeShader=id end,
             RenderToTexture=function(id, fn) assert(textures[id]); fn() end,
             TexRect=function()
-                if activeShader~=0 then
+                if activeShader~=0 and shaderLive[activeShader].uniformInt.depthtex==nil then
+                    assert(bound[6]=='$heightmap'); barrierDraws=(barrierDraws or 0)+1; return
+                elseif activeShader~=0 then
                     assert(textures[bound[0]], 'depth unbound before draw')
                     assert(type(bound[1])=='string' and file_exists(bound[1]), 'noise unbound before draw')
                     assert(bound[6]=='$heightmap', 'terrain heightmap missing')
@@ -126,9 +128,14 @@ runtime.execute('''
         widget:GameFrame(frame+1); widget:DrawWorld()
         assert(WG.DhubaiWeather.GetState()==name)
         assert(activeShader==0 and attribStack==0 and matrixStack==0, 'GL state leaked')
-        assert(bound[6]==false, 'borrowed terrain texture left bound')
+        assert(bound[6]==false and bound[7]==false, 'borrowed terrain texture left bound')
     end
-    assert(copies==3 and draws==6)
+    assert(copies==3 and draws==6 and barrierDraws==1)
+    widget:DrawWorld(); assert(barrierDraws==1, 'unchanged terrain rescanned')
+    widget:UnsyncedHeightMapUpdate(); widget:DrawWorld(); assert(barrierDraws==2)
+    widget:TextCommand('dhubaiweather fog'); widget:UnsyncedHeightMapUpdate()
+    widget:DrawWorld(); assert(barrierDraws==2, 'fog scanned sand barriers')
+    widget:TextCommand('dhubaiweather sandstorm'); widget:DrawWorld(); assert(barrierDraws==3)
     local providerCalls, active = 0, nil
     local ownedTexRect=gl.TexRect
     local field={version=1,texture='borrowed-radiance',heights='borrowed-heights',
@@ -153,7 +160,7 @@ runtime.execute('''
     widget:DrawWorld();assert(active==0,'provider shutdown left stale lighting enabled')
     assert(not WG.DhubaiWeather.SetMode('invalid'))
     viewX=1; viewY=1; widget:ViewResize(); widget:DrawWorld()
-    local count=0; for _ in pairs(textures) do count=count+1 end; assert(count==2)
+    local count=0; for _ in pairs(textures) do count=count+1 end; assert(count==3)
     widget:Shutdown()
     assert(not WG.DhubaiWeather and next(textures)==nil and next(shaderLive)==nil)
 ''')

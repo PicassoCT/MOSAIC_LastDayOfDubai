@@ -4,6 +4,7 @@
 uniform sampler2D depthtex;
 uniform sampler3D noise3dtex;
 uniform sampler2D terrainHeightTex; // engine-owned $heightmap, world-space heights
+uniform sampler2D sandBarrierTex; // first water encountered from the southern border
 uniform vec2 groundWaveBounds; // conservative terrain min/max + wave height
 uniform mat4 viewProjectionInv;
 uniform int zeroToOne;
@@ -54,6 +55,12 @@ float cloudNoise(vec3 p) {
 float sandWaveDensity(vec3 p) {
     vec2 uv = p.xz/mapSize;
     if (any(lessThan(uv, vec2(0.0))) || any(greaterThan(uv, vec2(1.0)))) return 0.0;
+    int columns = textureSize(sandBarrierTex, 0).x;
+    int column = clamp(int(uv.x*float(columns)), 0, columns-1);
+    float stop = texelFetch(sandBarrierTex, ivec2(column, 0), 0).r;
+    // Fade on the approaching (southern) bank; never restart on dry land beyond it.
+    float waterReach = smoothstep(0.0, 64.0, (uv.y-stop)*mapSize.y);
+    if (waterReach <= 0.0) return 0.0;
     vec2 size = vec2(textureSize(terrainHeightTex, 0));
     vec2 heightUV = (uv*(size-1.0)+0.5)/size;
     float ground = texture2D(terrainHeightTex, heightUV).r;
@@ -70,7 +77,7 @@ float sandWaveDensity(vec3 p) {
     float reach = smoothstep(front-0.04, front+0.06, uv.y);
     float edges = smoothstep(0.0, 0.025, uv.x)*(1.0-smoothstep(0.975, 1.0, uv.x));
     // Strongest at the desert entrance, thinning toward the coast; never over water.
-    return bands*vertical*reach*edges*smoothstep(0.0, 8.0, ground)*mix(0.35, 1.0, uv.y)*3.5;
+    return waterReach*bands*vertical*reach*edges*smoothstep(0.0, 8.0, ground)*mix(0.35, 1.0, uv.y)*3.5;
 }
 
 float densityAt(vec3 p) {

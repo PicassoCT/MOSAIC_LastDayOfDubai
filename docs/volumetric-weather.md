@@ -87,7 +87,19 @@ Sandstorm phases include broken, curling bands of blowing sand entering at the
 southern border (`+Z`) and drifting north (`-Z`). They follow the engine's live
 `$heightmap`, with density strongest just above the surface and fading completely
 within 64 world units. The map borrows this texture without allocating or deleting
-it. Water is excluded, and the waves thin toward the coast. Terrain materials
+it. The first river or sea water encountered from the south stops each northbound
+strip entirely: waves fade across 64 world units on the near bank and cannot
+restart on dry land beyond it. Strips with an uninterrupted dry route can keep
+moving north. This applies to ground-level sand; the higher atmospheric dust
+front still follows the storm schedule.
+
+A small R32F texture stores the first water boundary per 8-unit terrain column
+(4 KiB on this map). `Shaders/sandBarrier.frag` scans both corner edges of each
+column conservatively, including single-cell rivers. It is built on the first
+storm draw and refreshed after `UnsyncedHeightMapUpdate`, only when a storm is
+being rendered. This uses live terrain at sea level zero, not decorative water
+surfaces in building models. The wave shader then needs just one cached lookup
+per density evaluation; it does not search all the way back to the border. Terrain materials
 and the sand/asphalt splat mask are unchanged.
 
 The wave layer uses the same event phase, strength, rain suppression, sun and
@@ -101,7 +113,8 @@ in `sandWaveDensity` in `Shaders/fogShader.frag`.
 Use `/dhubaiweather sandstorm` to inspect persistent waves, and
 `/dhubaiweather automatic` to restore the normal schedule. Automated GLSL checks
 cover southern entry, northward motion, terrain following, water exclusion,
-pause, depth clipping and both depth conventions. These are synthetic GPU scenes;
+pause, first-water blocking without far-bank restart, terrain refresh, depth
+clipping and both depth conventions. These are synthetic GPU scenes;
 final appearance and the added storm-only sampling cost need an in-game check.
 
 ## Height-bounded radiance
