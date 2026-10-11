@@ -317,7 +317,6 @@ local setcfg = {
         {name = "house_asian1", x = 7474, z = 2134, rot = 0, scale = 1.000000},
         {name = "house_asian1", x = 78, z = 1178, rot = 0, scale = 1.000000},
         {name = "house_asian1", x = 5910, z = 2181, rot = 0, scale = 1.000000},
-        {name = "house_asian1", x = 5910, z = 2181, rot = 0, scale = 1.000000},
         {name = "house_asian1", x = 6414, z = 1640, rot = 0, scale = 1.000000},
         {name = "house_asian1", x = 5100, z = 1333, rot = 0, scale = 1.000000},
         
